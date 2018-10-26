@@ -1,5 +1,21 @@
 require(openxlsx)
 
+#' Description:
+#'  - Identify amplicons of interest from targeted alignment coordinates file
+#'   (The first xlsx file with the name "alignment" OR "manifest" will be used)
+#'  - Extract amplicons from targeted report files
+#'  - Save results as excel file
+#'
+#' Inputs ## Targeted report text files with the following columns:
+#' Chrm, Position, Strand, Methyl Read, UnMethyl Reads, Context, Seq
+#' There should be no column headers!
+#'
+#' Targeted alignment coordinates / manifest file must have the following columns:
+#' Name, Strand, Chromosome, Amplicon Start, Amplicon End
+#'
+#' Outputs ## Combined excel file for each amplicon
+#'
+
 #' findReports
 #' @param dir        directory to look for reports
 #' @param fileregex  regex string to look for reports
@@ -64,18 +80,18 @@ readManifest <- function (myManifest) {
   return(myManifest)
 }
 
-#' processBSAmpSeq
+#' processBSampseq
 #' Processes one bisulfite-amplicon sequencing file
 #'
 #' @import openxlsx
 #' @param filename      file path
 #' @param manifest      data.frame containing manifest
 #' @param minReads      (10) minimum number of reads required
-#' @param outputFolder  output folder for saving excels
+#' @param outputDir     output folder for saving excels
 #' @param saveExcel     (TRUE)  save excel file
 #' @param return        (FALSE) returns value
 #' @return excel and/or value depending on arguments
-processBSAmpSeq <- function(filename, manifest, minReads = 10,
+processBSampseq <- function(filename, manifest, minReads = 10,
                             outputDir = NULL, saveExcel = TRUE, return = FALSE) {
   # Read file and check if file looks valid
   methylreads <- read.delim(filename, header = FALSE)
@@ -85,7 +101,7 @@ processBSAmpSeq <- function(filename, manifest, minReads = 10,
     return(NULL)
   }
   # Get sample ID from file name & generate output file
-  sampleID <- gsub("\\_[A-Za-z0-9]+\\..*", "", x = filename)
+  sampleID <- gsub("\\_[A-Za-z0-9]+\\..*", "", x = basename(filename))
   # Format input
   names(methylreads) <- c("Chrm","Position","Strand","Meth_Reads","UnMeth_Reads","Context","Seq")
   methylreads <- methylreads[,1:7]
@@ -100,7 +116,7 @@ processBSAmpSeq <- function(filename, manifest, minReads = 10,
     mHits <- methylreads[methylreads$Chrm == manifest$Chromosome[iAmp],]
     mHits <- mHits[mHits$Strand == manifest$Strand[iAmp],]
     mHits <- mHits[mHits$Position >= manifest$Start[iAmp],]
-    mHits <- mHits[mHits$Position <= myManifest$End[iAmp],]
+    mHits <- mHits[mHits$Position <= manifest$End[iAmp],]
     # Calculate Beta
     mHits$Beta <- mHits$Meth_Reads/(mHits$Meth_Reads + mHits$UnMeth_Reads)
     # If there are hits after filtering, save sheet
@@ -113,15 +129,16 @@ processBSAmpSeq <- function(filename, manifest, minReads = 10,
   if(saveExcel) {
     outputfile <- gsub(pattern = "txt$", replacement = "xlsx", basename(filename))
     if(!is.null(outputDir)) outputfile <- file.path(outputDir, outputfile)
-    write.xlsx(myOutput, file = outputfile, col.names = TRUE)
+    # write.xlsx(myOutput, file = outputfile, col.names = TRUE)
+    write.xlsx(myOutput, file = outputfile)
   }
   if(return) return(myOutput)
 }
 #' batchprocessBSAmpSeq
-#' Loops processBSAmpSeq() over multiple files
+#' Loops processBSampseq() over multiple files
 #' @param files    vector of files to be processed
-#' @param ...      arguments passed to processBSAmpSeq
+#' @param ...      arguments passed to processBSampseq
 batchprocessBSAmpSeq <- function(files, ...) {
-  foo <- lapply(files, processBSAmpSeq, ...)
+  foo <- lapply(files, processBSampseq, ...)
 }
 
