@@ -1,7 +1,7 @@
 Package: BSampseq
 Title: Analysis of BS targeted amplicon sequencing
 Version: 0.0.1
-Authors@R: person("BY", "T", email = "btew@usc.edu")
+Authors@R: person("BY", "T", email = "btew@usc.edu", role = c("aut", "cre"))
 Description: What the package does (one paragraph).
 Depends: R (>= 3.5.0), stringr (>= 1.3.0), openxlsx (>= 4.0.0), ggplot2 (>= 3.0.0), gridExtra (>= 2.3) 
 License: What license is it under?
