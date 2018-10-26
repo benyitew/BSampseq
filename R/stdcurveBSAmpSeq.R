@@ -84,10 +84,10 @@ stdcurveBSampseq <- function(filenames, betas, name, StdFitPercent = 0.4,
   mySheets <- mySheets[[1]][mySheets.common]
 
   # Read data for all standards
-  Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read_excel(x, sheet = y, col_names = TRUE)))
+  Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read.xlsx(x, sheet = y, colNames = TRUE)))
   # If no correct header, but has over 8 columns
   if(!"Beta" %in% names(Stds[[1]][[1]])) {
-    Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read_excel(x, sheet = y, col_names = FALSE)))
+    Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read.xlsx(x, sheet = y, colNames = FALSE)))
     if(all(sapply(Stds[[1]], ncol) >= 7)) {
       Stds <- lapply(Stds, function(x) lapply(x, function(y) setNames(y, c("Chrm","Position","Strand","Methyl Read","UnMethyl Reads","Context","Seq","Beta"))))
     } else {
