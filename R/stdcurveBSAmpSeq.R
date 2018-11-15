@@ -6,10 +6,19 @@ require(gridExtra)
 #' Get the names of amplicons from excel sheet names
 .findSheetsWAmps <- function(file) {
   shts <- getSheetNames(file)
-  shts[!sapply(shts, grepl, file)]
+  shts <- shts[!sapply(shts, grepl, file)]
+  if(length(shts) > 0) return(shts)
+  # If this fails, just remove first sheet
+  shts <- getSheetNames(file)
+  shts <- shts[-1]
+  return(shts)
 }
 
 #' Guess standards beta based on file name
+#' P.S. This function does well but is not as smart as you are 
+#' It will fail if the filenames are too obscure (or for other reasons)
+#' PLEASE double check the results...
+#' And when in doubt, just pick out the standards manually
 #' @import readxl
 #' @import openxlsx
 #' @import stringr
@@ -21,13 +30,13 @@ require(gridExtra)
 #'           file: file path
 guessStdBetas <- function(filenames) {
   myFilelist <- basename(filenames)
-  fnParse <- str_split_fixed(myFilelist, "[_\\.]", 10)
+  fnParse <- str_split_fixed(myFilelist, "[-_\\.]", 10)
   # Check if part of the file name has 0 and 100
-  # fnIsStd <- apply(fnParse, 2, function(x) all(grepl("^[0-9]+$",x)))
-  # fnIsStd <- apply(fnParse, 2, function(x) all(max(as.numeric(x)) == 100, min(as.numeric(x)) == 0))
+  # samples <- unique(fnParse[,1])
+  # fnIsStd <- sapply(samples, function(y) apply(fnParse[fnParse[,1] %in% y,], 2, function(x) any(x == 0) & any(x == 100)))
   fnIsStd <- apply(fnParse, 2, function(x) any(x == 0) & any(x == 100))
   fnIsStd[is.na(fnIsStd)] <- FALSE
-  # Error if unable to determine standards methylation
+  # SpIsStd <- apply(fnIsStd, 2, any)
   if(!any(fnIsStd) | sum(fnIsStd) > 1) {
     message("Unable to determine standards methylation value. ",
             "Methylation values are determined by a value embedded in ",
@@ -79,7 +88,12 @@ stdcurveBSampseq <- function(filenames, betas, name, StdFitPercent = 0.4,
 
   # Find common amplicons in all standards file
   mySheets <- lapply(myFileList, .findSheetsWAmps)
-  mySheets.common <- apply(sapply(mySheets, function(x) mySheets[[1]] %in% x), 1, all)
+  mySheets.common <- sapply(mySheets, function(x) mySheets[[1]] %in% x)
+  if(class(mySheets.common) == "logical") {
+    mySheets.common <- all(mySheets.common)
+  } else {
+    mySheets.common <- apply(mySheets.common, 1, all)
+  }
   if(!all(mySheets.common)) message("Some amplicons were not found in all standards, only common amplicons were used.")
   mySheets <- mySheets[[1]][mySheets.common]
 
@@ -122,12 +136,16 @@ stdcurveBSampseq <- function(filenames, betas, name, StdFitPercent = 0.4,
   # Identify outliers for each amplicon
   for(iAmp in 1:length(AmpStds)) {
     AmpDat <- AmpStds[[iAmp]]
-    PrimerGood <- rep(TRUE, length(unique(gsub(".*\\.","",rownames(AmpDat)))))
+    # Create a list of CpGs, using position as name
+    PrimerGood <- rep(TRUE, length(unique(AmpDat$Position)))
+    names(PrimerGood) <- unique(AmpDat$Position)
+    # Go through each CpG and check if the median is greater than StdFitPercent
     for (i in unique(AmpDat$Exp_Beta)) {
+      CpGNums <- match(AmpDat$Position[AmpDat$Exp_Beta %in% i], names(PrimerGood))
       OneBeta <- AmpDat$Beta[AmpDat$Exp_Beta %in% i]
-      PrimerGood <- !abs(OneBeta - median(OneBeta)) > StdFitPercent & PrimerGood
+      PrimerGood[CpGNums] <- !abs(OneBeta - median(OneBeta)) > StdFitPercent & PrimerGood[CpGNums]
     }
-    AmpDat$Outlier <- rep(!PrimerGood, nrow(AmpDat)/length(PrimerGood))
+    AmpDat$Outlier <- !PrimerGood[match(AmpDat$Position, names(PrimerGood))]
     AmpStds[[iAmp]] <- AmpDat
   }
   # Check if there are no values in amplicon
@@ -267,7 +285,7 @@ plotAllStdCurve <- function(dflist, sampleID="", outputDir=NULL) {
 #' Read all excel sheets
 .read.xlsx.allsheets <- function(fn) {
   shts <- getSheetNames(fn)
-  xl <- lapply(shts, read_xlsx , path=fn)
+  xl <- lapply(shts, read.xlsx , xlsxFile=fn)
   names(xl) <- shts
   return(xl)
 }

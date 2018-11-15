@@ -7,7 +7,7 @@ require(openxlsx)
 #'  - Save results as excel file
 #'
 #' Inputs ## Targeted report text files with the following columns:
-#' Chrm, Position, Strand, Methyl Read, UnMethyl Reads, Context, Seq
+#' Chrm, Position, Strand, Methyl Read, UnMethyl Reads, Context, (Seq)
 #' There should be no column headers!
 #'
 #' Targeted alignment coordinates / manifest file must have the following columns:
@@ -33,6 +33,8 @@ findReports <- function(dir = ".", fileregex = "txt$") {
 findManifest <- function(dir = ".", fileregex = ".*([Mm]anifest|[Aa]lignment).*xlsx$") {
   # Find manifest file
   myManifest <- list.files(dir, fileregex)
+  # Remove temp files (starts with ~)
+  myManifest <- myManifest[!grepl("^~", myManifest)]
   if(length(myManifest) > 1) {
     message("Multiple manifest files found, the following manifest file was used: ", myManifest[1])
     myManifest <- myManifest[1]
@@ -103,8 +105,8 @@ processBSampseq <- function(filename, manifest, minReads = 10,
   # Get sample ID from file name & generate output file
   sampleID <- gsub("\\_[A-Za-z0-9]+\\..*", "", x = basename(filename))
   # Format input
-  names(methylreads) <- c("Chrm","Position","Strand","Meth_Reads","UnMeth_Reads","Context","Seq")
-  methylreads <- methylreads[,1:7]
+  methylreads <- methylreads[,1:6]
+  names(methylreads) <- c("Chrm","Position","Strand","Meth_Reads","UnMeth_Reads","Context")
   # Create list for tabbed excel file, starting with all reads
   myOutput <- list()
   myOutput[[sampleID]]<- methylreads
@@ -128,8 +130,10 @@ processBSampseq <- function(filename, manifest, minReads = 10,
   # Save as excel or return nvalue
   if(saveExcel) {
     outputfile <- gsub(pattern = "txt$", replacement = "xlsx", basename(filename))
-    if(!is.null(outputDir)) outputfile <- file.path(outputDir, outputfile)
-    # write.xlsx(myOutput, file = outputfile, col.names = TRUE)
+    if(!is.null(outputDir)) {
+      dir.create(outputDir, showWarnings = FALSE)
+      outputfile <- file.path(outputDir, outputfile)
+    }
     write.xlsx(myOutput, file = outputfile)
   }
   if(return) return(myOutput)

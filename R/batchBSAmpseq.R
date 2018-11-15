@@ -10,7 +10,7 @@
 #' @param inputDir
 #' @param outputDir
 #'
-batchBSampseq <- function(inputDir = ".", outputDir = ".") {
+batchBSampseq <- function(inputDir = ".", outputDir = ".", ...) {
   message("Finding manifest files...")
   man <- findManifest()
   if(length(man) == 0) return()
@@ -21,7 +21,7 @@ batchBSampseq <- function(inputDir = ".", outputDir = ".") {
   if(length(txt) == 0) return()
   if(!dir.exists(outputDir)) dir.create(outputDir)
   message("Processing reports...")
-  batchprocessBSAmpSeq(txt, man, outputDir = outputDir)
+  batchprocessBSAmpSeq(txt, man, outputDir = outputDir, ...)
   fn <- list.files(outputDir)
   if(outputDir != ".") fn <- file.path(outputDir, fn)
   message("Creating standard curves...")
@@ -36,6 +36,7 @@ batchBSampseq <- function(inputDir = ".", outputDir = ".") {
 #' @param gs    output from guessStdBetas
 #' @return nothing
 batchstdcurveBSampseq <- function(gs) {
+  gs <- gs[gs$IsStd,]
   stdlist <- unique(gs$ID)
   for (id in stdlist) {
     message("Making standard curve for sample ", id, "...")
