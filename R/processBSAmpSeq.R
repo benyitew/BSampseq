@@ -116,7 +116,9 @@ processBSampseq <- function(filename, manifest, minReads = 10,
   for (iAmp in 1:nrow(manifest)) {
     # Filter by: chromosome, strand and position
     mHits <- methylreads[methylreads$Chrm == manifest$Chromosome[iAmp],]
-    mHits <- mHits[mHits$Strand == manifest$Strand[iAmp],]
+    mystrand <- manifest$Strand[iAmp]
+    if(mystrand == "*") mystrand <- c("-", "+")
+    mHits <- mHits[mHits$Strand %in% mystrand,]
     mHits <- mHits[mHits$Position >= manifest$Start[iAmp],]
     mHits <- mHits[mHits$Position <= manifest$End[iAmp],]
     # Calculate Beta

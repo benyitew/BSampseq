@@ -197,7 +197,7 @@ stdcurveBSampseq <- function(filenames, betas, name, StdFitPercent = 0.4,
 plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
                          beta="Beta", expected="Exp_Beta", outlier="Outlier",
                          legend = TRUE, title,
-                         plotgraph=FALSE, savefile=FALSE) {
+                         plotgraph = FALSE, savefile = FALSE) {
   # Look for abline and rsq values if not defined
   if(all(missing(line.yint), missing(line.slope), missing(line.rsq))) {
     if(all(c("variable", "value") %in% names(df))) {
@@ -212,7 +212,8 @@ plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
   myPlot <- ggplot(df) +
     geom_point(aes_string(x=expected, y=beta, color=outlier),
                size = 2, na.rm = TRUE) +
-    scale_color_manual(values=c("TRUE"="red", "FALSE"="black"))
+    scale_color_manual(values=c("TRUE"="red", "FALSE"="black")) +
+    ylim(0,1)
   # Add title
   if(!missing(title)) {
     myPlot <- myPlot +
