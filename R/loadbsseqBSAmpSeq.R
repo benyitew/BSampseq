@@ -7,7 +7,7 @@ loadbsseqBSAmpSeq <- function(dir=".", gr=NULL) {
   fn <- list.files(dir, "cov.gz")
   fn <- file.path(dir, fn)
   sn <- gsub("_S.*", "", basename(fn))
-  bsseq <- read.bismark(fn, sampleNames = sn, strandCollapse = FALSE)
+  bsseq <- read.bismark(fn, strandCollapse = FALSE)
   sampleNames(bsseq) <- sn
   bsseq <- addStrandFromBSGRanges(bsseq, gr)
   return(bsseq)
