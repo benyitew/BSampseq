@@ -2,7 +2,9 @@ require(openxlsx)
 require(stringr)
 require(ggplot2)
 require(gridExtra)
-require(reshape2)
+
+#' This script is for processing BASESPACE output 
+#' 
 
 #' Get the names of amplicons from excel sheet names
 .findSheetsWAmps <- function(file) {
@@ -24,18 +26,14 @@ require(reshape2)
 #' @import openxlsx
 #' @import stringr
 #' @param filenames    names of files
-#'                     can also take bsseq objects
 #' @return data.frame with following columns
 #'           ID: possible sample ID
 #'           beta: beta value
 #'           IsStd: is the sample a standard
 #'           file: file path
-guessStdBetas <- function(filenames) {
-  if(class(filenames) == "BSseq") {
-    myFilelist <- sampleNames(filenames)
-  } else {
-    myFilelist <- basename(filenames)
-  }
+# guessStdBetas <- function(filenames) {
+if(FALSE) {
+  myFilelist <- basename(filenames)
   fnParse <- str_split_fixed(myFilelist, "[-_\\.]", 10)
   # Check if part of the file name has 0 and 100
   # samples <- unique(fnParse[,1])
@@ -48,27 +46,20 @@ guessStdBetas <- function(filenames) {
             "Methylation values are determined by a value embedded in ",
             "_ or .  For example, Standard_0_m.xlsx, ",
             "Standard_50_m.xlsx, Standard_100_m.xlsx")
-    return(filenames)
+    return(NULL)
   }
   # Get standard betas
   StdBeta <- fnParse[,fnIsStd]
   SampleIsStd <- grepl("^[0-9]+$", StdBeta)
   SampleIDs <- apply(fnParse[,!fnIsStd], 1, paste, collapse = "_")
   SampleIDs <- gsub("_targeted.*", "", SampleIDs)
-  SampleIDs <- gsub("_*$", "", SampleIDs)
   # Find which samples have standards
   StdIDs <- sapply(unique(SampleIDs), function(x) all(SampleIsStd[SampleIDs %in% x]))
   StdIDs <- names(StdIDs)[StdIDs]
-  # Save as bsseq or data.frame depending on input
-  if(class(filenames) == "BSseq") {
-    res <- filenames
-    res$ID <- SampleIDs
-    res$beta <- as.numeric(StdBeta)
-  } else {
-    res <- data.frame(ID = SampleIDs, beta = as.numeric(StdBeta),
-                      IsStd = SampleIsStd, file = filenames,
-                      stringsAsFactors=FALSE)
-  }
+
+  res <- data.frame(ID = SampleIDs, beta = as.numeric(StdBeta),
+                    IsStd = SampleIsStd, file = filenames,
+                    stringsAsFactors=FALSE)
   return(res)
 }
 
@@ -82,13 +73,9 @@ guessStdBetas <- function(filenames) {
 #' @import readxl
 #' @import openxlsx
 #'
-#' @param bsseq         bsseq object
-#'                      MUST have the following two pdata columns:
-#'                       - ID  (sample ID, identical sample IDs will be plotted together)
-#'                       - beta  (expected beta value)
-#' @param regions       granges object of amplicons
-#'                      MUST have the following column:
-#'                       - genes  (gene associated with amplicon)
+#' @param filenames     processed excel files (use processBSampseq)
+#' @param betas         beta values of files
+#' @param name          name of sample
 #' @param StdFitPercent (0.4) beta deviation from median to be classified as outlier
 #' @param outputDir     (NULL) output folder for saving excels
 #' @param saveExcel     (TRUE)  save excel file
@@ -97,77 +84,101 @@ guessStdBetas <- function(filenames) {
 #' @return data.frame or excel file with standard curves
 #'
 #'
-stdcurveBSampseq <- function(bsseq, regions, minCov = 5, StdFitPercent = 0.4,
+bs_stdcurveBSampseq <- function(filenames, betas, name, StdFitPercent = 0.4,
                              outputDir = NULL, saveExcel = TRUE, return = FALSE) {
-  # Order bsseq by increasing beta
-  mySamples <- unique(bsseq$ID)
-  mySamples <- mySamples[!is.na(mySamples)]
-  
-  # Do each standard individually
-  for (mySample in mySamples) {
-    # Get bsseq for subsample (remove 0 coverage regions)
-    bs <- bsseq[,bsseq$ID %in% mySample]
-    bs <- bs[rowSums(getCoverage(bs, type = "Cov")) != 0]
-    # Filter by region coverage
-    regCovs <- rowMeans(getCoverage(bs, regions = regions, type = "Cov", what = "perRegionAverage"), na.rm=T)
-    reg <- regions[sapply(regCovs > minCov, isTRUE)]
-    # Get methylation values
-    M <- getMeth(bs, regions = reg, type = "raw")
-    C <- getCoverage(bs, regions = reg, type = "Cov", what = "perBase")
-    names(M) <- reg$genes
-    names(C) <- reg$genes
-    # Do this for each individual amplicon
-    xlOut <- list()
-    for (i in 1:length(M)) {
-      # Reshape methylation
-      gr2 <- granges(bs[bs %over% reg[i]])
-      values(gr2) <- M[[i]]
-      colnames(values(gr2)) <- sampleNames(bs)
-      df <- melt(as.data.frame(gr2), 
-                 id.vars = c("seqnames", "start", "end", "width", "strand"))
-      names(df)[6:7] <- c("sample", "obs_beta")
-      Stdbeta <- bs$beta
-      names(Stdbeta) <- sampleNames(bs)
-      df$exp_beta <- Stdbeta[df$sample]
-      # Reshape coverage and merge with
-      gr3 <-granges(bs[bs %over% reg[i]])
-      values(gr3) <- C[[i]]
-      df2 <- melt(as.data.frame(gr3), 
-                 id.vars = c("seqnames", "start", "end", "width", "strand"))
-      df$coverage <- df2$value
-      
-      # Identify outliers
-      df$outlier <- FALSE
-      CpGs <- unique(df$start)
-      colMeds <- colMedians(M[[i]], na.rm = TRUE)
-      for (iCpG in CpGs) {
-        CpGbetas <- df$obs_beta[df$start == iCpG]
-        if(any(abs(CpGbetas - colMeds) > StdFitPercent, na.rm = TRUE)) {
-          df$outlier[df$start == iCpG] <- TRUE
-        }
-      }
-      # Sort
-      df <- df[order(df$exp_beta),]
-      # Calculate standard curve
-      PrimerRsq <- summary(lm(obs_beta ~ exp_beta, df[!df$outlier,], na.action=na.omit))$r.squared
-      PrimerLM <- lm(obs_beta ~ exp_beta, df[!df$outlier,], na.action=na.omit)$coefficients
-      df$variable <- c("R-squared", "Gradient", "Intercept", rep(NA, nrow(df)-3))
-      df$value <- c(PrimerRsq, PrimerLM[2], PrimerLM[1], rep(NA, nrow(df)-3))
-      # Save into list
-      xlOut[[i]] <- df
+  # Order files by increasing beta
+  myFileList <- filenames[order(betas)]
+  StdBeta <- betas[order(betas)]
+
+  # Find common amplicons in all standards file
+  mySheets <- lapply(myFileList, .findSheetsWAmps)
+  mySheets.common <- sapply(mySheets, function(x) mySheets[[1]] %in% x)
+  if(class(mySheets.common) == "logical") {
+    mySheets.common <- all(mySheets.common)
+  } else {
+    mySheets.common <- apply(mySheets.common, 1, all)
+  }
+  if(!all(mySheets.common)) message("Some amplicons were not found in all standards, only common amplicons were used.")
+  mySheets <- mySheets[[1]][mySheets.common]
+
+  # Read data for all standards
+  Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read.xlsx(x, sheet = y, colNames = TRUE)))
+  # If no correct header, but has over 8 columns
+  if(!"Beta" %in% names(Stds[[1]][[1]])) {
+    Stds <- lapply(myFileList, function(x) lapply(mySheets, function(y) read.xlsx(x, sheet = y, colNames = FALSE)))
+    if(all(sapply(Stds[[1]], ncol) >= 7)) {
+      Stds <- lapply(Stds, function(x) lapply(x, function(y) setNames(y, c("Chrm","Position","Strand","Methyl Read","UnMethyl Reads","Context","Seq","Beta"))))
+    } else {
+      stop("Error reading standards, make sure the columns are properly labeled.")
     }
-    names(xlOut) <- reg$genes
-    
-    # Write excel file
-    outputfile <- paste0(mySample, "_StdCurve.xlsx")
-    if(!is.null(outputDir)) outputfile <- file.path(outputDir, outputfile)
-    if(saveExcel) write.xlsx(xlOut, file = outputfile, col.names = TRUE)
-    if(return) return(xlOut)
+  }
+  names(Stds) <- StdBeta
+  Stds <- lapply(Stds, function(x) setNames(x, mySheets))
+
+  # Identify only common columns and trim off excess columns
+  myCols <- lapply(Stds, function(x) sapply(x, function(y) names(y)))
+  myCols <- sapply(unique(as.vector(myCols[[1]])), function(z)
+    all(sapply(myCols, function(x) all(apply(x, 2, function(y) z %in% y))))
+  )
+  myCols <- names(myCols[myCols])
+  myCols <- myCols[myCols %in% c("Chrm","Position","Strand","Meth_Reads","UnMeth_Reads","Context","Seq","Beta")]
+  Stds <- lapply(Stds, function(x) lapply(x, function(y) y[,myCols]))
+  if(!"Beta" %in% myCols) stop("Beta column not found in one or more files.")
+
+  # Add percent methylation value
+  for (i in 1:length(Stds)) {
+    Stds[[i]] <- lapply(Stds[[i]], function(x) data.frame(x, Exp_Beta=StdBeta[i]))
   }
 
+
+  # Combine all standards for each amplicon
+  AmpStds <- list()
+  for (i in 1:length(mySheets)) {
+    AmpStds[[mySheets[i]]] <- do.call("rbind", sapply(Stds, function(x) x[i]))
+  }
+
+  # Identify outliers for each amplicon
+  for(iAmp in 1:length(AmpStds)) {
+    AmpDat <- AmpStds[[iAmp]]
+    # Create a list of CpGs, using position as name
+    PrimerGood <- rep(TRUE, length(unique(AmpDat$Position)))
+    names(PrimerGood) <- unique(AmpDat$Position)
+    # Go through each CpG and check if the median is greater than StdFitPercent
+    for (i in unique(AmpDat$Exp_Beta)) {
+      CpGNums <- match(AmpDat$Position[AmpDat$Exp_Beta %in% i], names(PrimerGood))
+      OneBeta <- AmpDat$Beta[AmpDat$Exp_Beta %in% i]
+      PrimerGood[CpGNums] <- !abs(OneBeta - median(OneBeta)) > StdFitPercent & PrimerGood[CpGNums]
+    }
+    AmpDat$Outlier <- !PrimerGood[match(AmpDat$Position, names(PrimerGood))]
+    AmpStds[[iAmp]] <- AmpDat
+  }
+  # Check if there are no values in amplicon
+  AmpLMStds <- AmpStds
+  AmpYesReads <- sapply(AmpStds, function(x) any(!x$Outlier))
+  AmpYesReads[is.na(AmpYesReads)] <- FALSE
+  if(any(!AmpYesReads)) {
+    AmpLMStds <- AmpStds[AmpYesReads]
+    print(paste("No reads found in the following amplicons, no standard curve were made:",
+                paste(names(which(!AmpYesReads)), collapse=", ")))
+
+  }
+  # Calculate linear model and r-square (exclude outliers)
+  PrimerRsq <- sapply(AmpLMStds, function(x) summary(lm(Beta ~ Exp_Beta, x[!x$Outlier,], na.action=na.omit))$r.squared)
+  PrimerLM <- sapply(AmpLMStds, function(x) lm(Beta ~ Exp_Beta, x[!x$Outlier,], na.action=na.omit)$coefficients)
+  # Add these numbers to matrices for export
+  for (i in names(AmpLMStds)) {
+    AmpStds[[i]]$variable <- c("R-squared", "Gradient", "Intercept", rep(NA, nrow(AmpStds[[i]])-3))
+    AmpStds[[i]]$value <- c(PrimerRsq[i], PrimerLM[2,i], PrimerLM[1,i], rep(NA, nrow(AmpStds[[i]])-3))
+  }
+
+  # Write excel file
+  outputfile <- paste(name, "_StdCurve.xlsx", sep="")
+  # outputfile <- gsub(pattern = ".xlsx$", replacement = "_StdCurve.xlsx", myFileList[length(myFileList)])
+  # outputfile <- gsub(pattern = "[\\_\\.]100", replacement = "", outputfile)
+  if(!is.null(outputDir)) outputfile <- file.path(outputDir, outputfile)
+  if(saveExcel) write.xlsx(AmpStds, file = outputfile, col.names = TRUE)
+  if(return) return(AmpStds)
 }
-
-
 
 
 #' plotStdCurve
@@ -182,15 +193,14 @@ stdcurveBSampseq <- function(bsseq, regions, minCov = 5, StdFitPercent = 0.4,
 #' @param beta        name of observed beta column
 #' @param expected    name of expected beta column
 #' @param outlier     name of outlier column
-#' @param coverage    logical: include coverage?
 #' @param legend      logical: include legend?
 #' @param title       title of plot
 #' @param plotgraph   logical: plot the graph in R?
 #' @param savefile    location of file to save or FALSE
 #'
-plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
-                         beta="obs_beta", expected="exp_beta", outlier="outlier",
-                         coverage = TRUE,legend = TRUE, title,
+bs_plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
+                         beta="Beta", expected="Exp_Beta", outlier="Outlier",
+                         legend = TRUE, title,
                          plotgraph = FALSE, savefile = FALSE) {
   # Look for abline and rsq values if not defined
   if(all(missing(line.yint), missing(line.slope), missing(line.rsq))) {
@@ -223,10 +233,6 @@ plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
     myPlot <- myPlot + annotate("text", x=0, y=1, hjust=0, vjust=1, size=3, parse=TRUE,
                                 label = paste("R^2 ==", round(line.rsq,3)))
   }
-  if(coverage) {
-    myPlot <- myPlot + annotate("text", x=0, y=0.937, hjust=0, vjust=1, size=3,
-                                label = paste0("mean coverage = ", round(mean(df$coverage),1)))
-  }
   # Exclude legend
   if(!legend) myPlot <- myPlot + theme(legend.position="none")
   # Show, save or return plot
@@ -249,7 +255,7 @@ plotStdCurve <- function(df, line.yint, line.slope, line.rsq,
 #' @param sampleID     name of sample displayed on plots
 #' @param outputDir    output directory
 #'
-plotAllStdCurve <- function(dflist, sampleID="", outputDir=NULL, ...) {
+bs_plotAllStdCurve <- function(dflist, sampleID="", outputDir=NULL) {
   # If dflist is not a list but a character, try to load it as excel
   if(is.character(dflist) & all(grepl("xlsx$", dflist))) {
     dflist <- .read.xlsx.allsheets(dflist)
@@ -262,7 +268,7 @@ plotAllStdCurve <- function(dflist, sampleID="", outputDir=NULL, ...) {
     if(!is.null(outputDir)) outputfile <- file.path(outputDir, outputfile)
     plotStdCurve(AmpDat,
                  title = paste(sampleID, names(dflist)[iAmp], "Standard Curve"),
-                 plotgraph = FALSE, savefile = outputfile, ...)
+                 plotgraph = FALSE, savefile = outputfile)
     AmpPlots[[iAmp]] <- plotStdCurve(AmpDat, title=names(dflist[iAmp]),
                                      plotgraph=FALSE, legend=FALSE)
   }
