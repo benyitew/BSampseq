@@ -4,12 +4,13 @@
 #' @param std      standard curve excel file
 #' @param save     either FALSE or the file name to save excel as
 #' @param return   logical - return data.frame
-createCpgManifest <- function(std, save=FALSE, return=FALSE) {
+createCpgManifest <- function(std, minCov = 5, save=FALSE, return=FALSE) {
   if(class(std) == "character") std <- .read.xlsx.allsheets(std)
   std <- mapply(function(x,y) data.frame(Name=y, x), x=std, y=names(std), SIMPLIFY = F)
   std <- Reduce(rbind, std)
-  std$Coord <- paste0(substr(std$Chrm,4,5), "-", std$Position)
-  cpgs <- std[!duplicated(std$Coord),c(1:4,10)]
+  std$Coord <- paste0(std$seqnames, "-", std$start)
+  cpgs <- std[!duplicated(std$Coord) & std$coverage >= minCov,
+              c(1:6,which(names(std) %in% "outlier"))]
   if(!isFALSE(save)) write.xlsx(cpgs, save)
   return(cpgs)
 }
@@ -32,7 +33,7 @@ CpGManifest2GRanges <- function(man) {
 #' @return data.frame 
 getMethFromCpgManifest <- function(bs, man, exclude_outliers = TRUE, show_coords = FALSE) {
   gr <- CpGManifest2GRanges(man)
-  if(isTRUE(exclude_outliers)) gr <- gr[!gr$Outlier]
+  if(isTRUE(exclude_outliers)) gr <- gr[!gr$outlier]
   M <- getMeth(bs, regions = gr, type="raw", what = "perRegion")
   M <- data.frame(name = gr$Name, M)
   if(isTRUE(show_coords)) M <- cbind(data.frame(gr)[,c(1,2,5)], M)
@@ -40,7 +41,7 @@ getMethFromCpgManifest <- function(bs, man, exclude_outliers = TRUE, show_coords
 }
 getCovgFromCpgManifest <- function(bs, man, exclude_outliers = TRUE, show_coords = FALSE) {
   gr <- CpGManifest2GRanges(man)
-  if(isTRUE(exclude_outliers)) gr <- gr[!gr$Outlier]
+  if(isTRUE(exclude_outliers)) gr <- gr[!gr$outlier]
   C <- getCoverage(bs, regions = gr, type="Cov", what = "perRegionTotal")
   C <- data.frame(name = gr$Name, C)
   if(isTRUE(show_coords)) C <- cbind(data.frame(gr)[,c(1,2,5)], C)
@@ -53,4 +54,13 @@ summarizeAmpliconByName <- function(df) {
   v <- df[,-which(names(df) %in% c("seqnames", "start", "strand", "name"))]
   res <- sapply(unique(df$name), function(x) colMeans(v[df$name %in% x,], na.rm = T))
   data.frame(name=unique(df$name), t(res))
+}
+
+summarizeAmpliconBypData <- function(df, bs) {
+  x <- data.frame(t(df))
+  names(x) <- sapply(x[1,], as.character)
+  x <- x[-1,]
+  x <- sapply(x, function(y) as.numeric(levels(y))[y])
+  x <- data.frame(pData(bs), x)
+  return(x)
 }
